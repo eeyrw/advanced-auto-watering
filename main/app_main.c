@@ -16,7 +16,6 @@
 #include "nvs_flash.h"
 #include "esp_event.h"
 #include "esp_netif.h"
-#include "protocol_examples_common.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -39,6 +38,7 @@
 #include "nvs_flash.h"
 #include "esp_netif.h"
 #include "esp_smartconfig.h"
+#include "driver/temp_sensor.h"
 
 static const char *TAG = "AUTO_WATERING";
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
@@ -53,6 +53,26 @@ static const int ESPTOUCH_DONE_BIT = BIT1;
 static void mqtt_app_start(void);
 
 static void smartconfig_example_task(void * parm);
+
+void tempsensor_example(void *arg)
+{
+    // Initialize touch pad peripheral, it will start a timer to run a filter
+    ESP_LOGI(TAG, "Initializing Temperature sensor");
+    float tsens_out;
+    temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
+    temp_sensor_get_config(&temp_sensor);
+    ESP_LOGI(TAG, "default dac %d, clk_div %d", temp_sensor.dac_offset, temp_sensor.clk_div);
+    temp_sensor.dac_offset = TSENS_DAC_DEFAULT; // DEFAULT: range:-10℃ ~  80℃, error < 1℃.
+    temp_sensor_set_config(temp_sensor);
+    temp_sensor_start();
+    ESP_LOGI(TAG, "Temperature sensor started");
+    while (1) {
+        vTaskDelay(5000 / portTICK_RATE_MS);
+        temp_sensor_read_celsius(&tsens_out);
+        ESP_LOGI(TAG, "Temperature out celsius %f°C", tsens_out);
+    }
+    vTaskDelete(NULL);
+}
 
 static void event_handler(void* arg, esp_event_base_t event_base,
                                 int32_t event_id, void* event_data)
@@ -265,6 +285,7 @@ void app_main(void)
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
+    xTaskCreate(tempsensor_example, "temp", 2048, NULL, 5, NULL);
     initialise_wifi();
     // ESP_ERROR_CHECK(example_connect());
     // mqtt_app_start();
