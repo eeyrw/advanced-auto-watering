@@ -43,7 +43,7 @@
 static const char *TAG = "AUTO_WATERING";
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
 static EventGroupHandle_t s_wifi_event_group;
-
+static esp_mqtt_client_handle_t mqtt_client;
 /* The event group allows multiple bits for each event,
    but we only care about one event - are we connected
    to the AP with an IP? */
@@ -56,6 +56,7 @@ static void smartconfig_example_task(void * parm);
 
 void tempsensor_example(void *arg)
 {
+    char jsonBuf[1024];
     // Initialize touch pad peripheral, it will start a timer to run a filter
     ESP_LOGI(TAG, "Initializing Temperature sensor");
     float tsens_out;
@@ -70,6 +71,9 @@ void tempsensor_example(void *arg)
         vTaskDelay(5000 / portTICK_RATE_MS);
         temp_sensor_read_celsius(&tsens_out);
         ESP_LOGI(TAG, "Temperature out celsius %f°C", tsens_out);
+        sprintf(jsonBuf, "{\"id\":123,\"dp\":%f}", tsens_out);
+        int msg_id = esp_mqtt_client_publish(mqtt_client, "/topic/qos0", jsonBuf, 0, 0, 0);
+        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
     }
     vTaskDelete(NULL);
 }
@@ -257,10 +261,10 @@ static void mqtt_app_start(void)
     esp_mqtt_client_config_t mqtt_cfg = {
         .uri = CONFIG_BROKER_URL,
     };
-    esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
+    mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
-    esp_mqtt_client_register_event(client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
-    esp_mqtt_client_start(client);
+    esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
+    esp_mqtt_client_start(mqtt_client);
 }
 
 void app_main(void)
@@ -285,7 +289,7 @@ void app_main(void)
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
-    xTaskCreate(tempsensor_example, "temp", 2048, NULL, 5, NULL);
+    xTaskCreate(tempsensor_example, "temp", 4096, NULL, 5, NULL);
     initialise_wifi();
     // ESP_ERROR_CHECK(example_connect());
     // mqtt_app_start();
