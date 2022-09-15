@@ -39,6 +39,9 @@
 #include "esp_netif.h"
 #include "esp_smartconfig.h"
 #include "driver/temp_sensor.h"
+#include <time.h>
+#include <sys/time.h>
+#include "esp_sntp.h"
 
 static const char *TAG = "AUTO_WATERING";
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
@@ -53,6 +56,83 @@ static const int ESPTOUCH_DONE_BIT = BIT1;
 static void mqtt_app_start(void);
 
 static void smartconfig_example_task(void * parm);
+
+static void obtain_time(void);
+static void initialize_sntp(void);
+
+void time_sync_notification_cb(struct timeval *tv)
+{
+    ESP_LOGI(TAG, "Notification of a time synchronization event");
+}
+
+void time_init_task(void *arg)
+{
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    localtime_r(&now, &timeinfo);
+    // Is time set? If not, tm_year will be (1970 - 1900).
+    //if (timeinfo.tm_year < (2016 - 1900)) {
+        ESP_LOGI(TAG, "Time is not set yet. Connecting to WiFi and getting time over NTP.");
+        obtain_time();
+        // update 'now' variable with current time
+        time(&now);
+    //}
+
+    char strftime_buf[64];
+
+    // Set timezone to China Standard Time
+    setenv("TZ", "CST-8", 1);
+    tzset();
+    localtime_r(&now, &timeinfo);
+    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+    ESP_LOGI(TAG, "The current date/time in Shanghai is: %s", strftime_buf);
+    vTaskDelete(NULL);
+}
+
+static void obtain_time(void)
+{
+
+    initialize_sntp();
+
+    // wait for time to be set
+    time_t now = 0;
+    struct tm timeinfo = { 0 };
+    int retry = 0;
+    const int retry_count = 15;
+    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count) {
+        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
+    }
+    time(&now);
+    localtime_r(&now, &timeinfo);
+}
+
+static void initialize_sntp(void)
+{
+    ESP_LOGI(TAG, "Initializing SNTP");
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+
+    // otherwise, use DNS address from a pool
+    sntp_setservername(0, "cn.pool.ntp.org");
+    sntp_setservername(1, "pool.ntp.org");     // set the secondary NTP server (will be used only if SNTP_MAX_SERVERS > 1)
+    sntp_set_time_sync_notification_cb(time_sync_notification_cb);
+    sntp_init();
+
+    ESP_LOGI(TAG, "List of configured NTP servers:");
+
+    for (uint8_t i = 0; i < SNTP_MAX_SERVERS; ++i){
+        if (sntp_getservername(i)){
+            ESP_LOGI(TAG, "server %d: %s", i, sntp_getservername(i));
+        } else {
+            // we have either IPv4 or IPv6 address, let's print it
+            char buff[INET6_ADDRSTRLEN];
+            ip_addr_t const *ip = sntp_getserver(i);
+            if (ipaddr_ntoa_r(ip, buff, INET6_ADDRSTRLEN) != NULL)
+                ESP_LOGI(TAG, "server %d: %s", i, buff);
+        }
+    }
+}
 
 void tempsensor_example(void *arg)
 {
@@ -171,6 +251,7 @@ static void smartconfig_example_task(void * parm)
         if(uxBits & CONNECTED_BIT) {
             ESP_LOGI(TAG, "WiFi Connected to ap");
             mqtt_app_start();
+            xTaskCreate(time_init_task, "time", 2048, NULL, 5, NULL);
         }
         if(uxBits & ESPTOUCH_DONE_BIT) {
             ESP_LOGI(TAG, "smartconfig over");
