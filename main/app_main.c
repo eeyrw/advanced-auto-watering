@@ -164,6 +164,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
         xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
         esp_wifi_connect();
         xEventGroupClearBits(s_wifi_event_group, CONNECTED_BIT);
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
@@ -252,6 +253,7 @@ static void smartconfig_example_task(void * parm)
             ESP_LOGI(TAG, "WiFi Connected to ap");
             mqtt_app_start();
             xTaskCreate(time_init_task, "time", 2048, NULL, 5, NULL);
+            xTaskCreate(tempsensor_example, "temp", 4096, NULL, 5, NULL);
         }
         if(uxBits & ESPTOUCH_DONE_BIT) {
             ESP_LOGI(TAG, "smartconfig over");
@@ -370,7 +372,6 @@ void app_main(void)
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
-    xTaskCreate(tempsensor_example, "temp", 4096, NULL, 5, NULL);
     initialise_wifi();
     // ESP_ERROR_CHECK(example_connect());
     // mqtt_app_start();
