@@ -10,7 +10,6 @@ menu "Example Configuration"
         bool
         default y if BROKER_URL = "FROM_STDIN"
 
-
     config EXAMPLE_SHT3X_ADDR
         hex "I2C address of SHT3x"
         default 0x44
