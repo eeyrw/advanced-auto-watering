@@ -42,7 +42,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include "esp_sntp.h"
-#include "sht30.h"
+#include <sht3x.h>
 
 static const char *TAG = "AUTO_WATERING";
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
@@ -66,26 +66,33 @@ void time_sync_notification_cb(struct timeval *tv)
 {
     ESP_LOGI(TAG, "Notification of a time synchronization event");
 }
-
-void read_temperature_humidity_task(void *arg)
+static sht3x_t dev;
+void read_temperature_humidity_task(void *pvParameters)
 {
-    sht30_t sht30;
-    sht30.i2c_port = I2C_NUM_0;
-    sht30.addr = 0x44;
-    if (sht30_init(&sht30) != ESP_OK)
-    {
-        // error handling...
-    }
+    float temperature;
+    float humidity;
+    
 
-    // display temperature and humidity every 10 seconds
+    
+   
+    sht3x_init_desc(&dev, CONFIG_EXAMPLE_SHT3X_ADDR, 0, CONFIG_EXAMPLE_I2C_MASTER_SDA, CONFIG_EXAMPLE_I2C_MASTER_SCL);
+    sht3x_init(&dev);
+
+    TickType_t last_wakeup = xTaskGetTickCount();
+
     while (1)
     {
-        printf("SHT30: %5.2f C %5.2f %%\n",
-               sht30_get_temperature(&sht30, true),
-               sht30_get_humidity(&sht30, false));
-        vTaskDelay(pdMS_TO_TICKS(10000));
+        // perform one measurement and do something with the results
+        if(ESP_OK == sht3x_measure(&dev, &temperature, &humidity))
+            ESP_LOGI(TAG,"SHT3x Sensor: %.2f °C, %.2f %%", temperature, humidity);
+        else
+            ESP_LOGE(TAG,"Fail to read SHT3x");
+
+        // wait until 5 seconds are over
+        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(5000));
     }
 }
+
 void time_init_task(void *arg)
 {
     time_t now;
@@ -411,6 +418,10 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init());
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    ESP_ERROR_CHECK(i2cdev_init());
+
+    memset(&dev, 0, sizeof(sht3x_t));
+
 
     /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
