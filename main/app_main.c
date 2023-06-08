@@ -191,9 +191,8 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
     {
         xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
-    }
-    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
-    {
+    } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+        ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
         esp_wifi_connect();
         xEventGroupClearBits(s_wifi_event_group, CONNECTED_BIT);
     }
@@ -297,6 +296,7 @@ static void smartconfig_example_task(void *parm)
             ESP_LOGI(TAG, "WiFi Connected to ap");
             mqtt_app_start();
             xTaskCreate(time_init_task, "time", 2048, NULL, 5, NULL);
+            xTaskCreate(tempsensor_example, "temp", 4096, NULL, 5, NULL);
         }
         if (uxBits & ESPTOUCH_DONE_BIT)
         {
