@@ -71,9 +71,6 @@ void read_temperature_humidity_task(void *pvParameters)
 {
     float temperature;
     float humidity;
-    
-
-    
    
     sht3x_init_desc(&dev, CONFIG_EXAMPLE_SHT3X_ADDR, 0, CONFIG_EXAMPLE_I2C_MASTER_SDA, CONFIG_EXAMPLE_I2C_MASTER_SCL);
     sht3x_init(&dev);
@@ -90,6 +87,25 @@ void read_temperature_humidity_task(void *pvParameters)
 
         // wait until 5 seconds are over
         vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(5000));
+    }
+}
+
+void blink_task(void *pvParameters)
+{
+
+    gpio_set_direction(GPIO_NUM_12, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GPIO_NUM_13, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_13, 0);
+
+    TickType_t last_wakeup = xTaskGetTickCount();
+
+    while (1)
+    {
+        gpio_set_level(GPIO_NUM_12, 0);
+        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(1000));
+        // wait until 5 seconds are over
+        gpio_set_level(GPIO_NUM_12, 1);
+        vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(50));
     }
 }
 
@@ -429,6 +445,7 @@ void app_main(void)
      */
     // xTaskCreate(tempsensor_example, "temp", 4096, NULL, 5, NULL);
     xTaskCreate(read_temperature_humidity_task, "temp", 4096, NULL, 5, NULL);
+    xTaskCreate(blink_task, "blink", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     initialise_wifi();
     // ESP_ERROR_CHECK(example_connect());
     // mqtt_app_start();
