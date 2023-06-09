@@ -44,6 +44,7 @@
 #include "esp_sntp.h"
 #include <sht3x.h>
 #include "wifi_manager.h"
+#include <button.h>
 
 static const char *TAG = "AUTO_WATERING";
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
@@ -89,6 +90,32 @@ void read_temperature_humidity_task(void *pvParameters)
         // wait until 5 seconds are over
         vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(5000));
     }
+}
+
+static const char *states[] = {
+    [BUTTON_PRESSED]      = "pressed",
+    [BUTTON_RELEASED]     = "released",
+    [BUTTON_CLICKED]      = "clicked",
+    [BUTTON_PRESSED_LONG] = "pressed long",
+};
+static button_t btn1;
+static void on_button(button_t *btn, button_state_t state)
+{
+    ESP_LOGI(TAG, "Boot button %s", states[state]);
+}
+
+void button_init_task(void *pvParameters)
+{
+    // First button connected between GPIO and GND
+    // pressed logic level 0, no autorepeat
+    btn1.gpio = 9;
+    btn1.pressed_level = 0;
+    btn1.internal_pull = true;
+    btn1.autorepeat = false;
+    btn1.callback = on_button;
+
+    ESP_ERROR_CHECK(button_init(&btn1));
+    vTaskDelete(NULL);
 }
 
 void blink_task(void *pvParameters)
@@ -468,6 +495,7 @@ void app_main(void)
     // xTaskCreate(tempsensor_example, "temp", 4096, NULL, 5, NULL);
     xTaskCreate(read_temperature_humidity_task, "temp", 4096, NULL, 5, NULL);
     xTaskCreate(blink_task, "blink", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
+    xTaskCreate(button_init_task, "button", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     initialise_wifi();
     // ESP_ERROR_CHECK(example_connect());
     // mqtt_app_start();
