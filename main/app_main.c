@@ -93,9 +93,9 @@ void read_temperature_humidity_task(void *pvParameters)
 }
 
 static const char *states[] = {
-    [BUTTON_PRESSED]      = "pressed",
-    [BUTTON_RELEASED]     = "released",
-    [BUTTON_CLICKED]      = "clicked",
+    [BUTTON_PRESSED] = "pressed",
+    [BUTTON_RELEASED] = "released",
+    [BUTTON_CLICKED] = "clicked",
     [BUTTON_PRESSED_LONG] = "pressed long",
 };
 static button_t btn1;
