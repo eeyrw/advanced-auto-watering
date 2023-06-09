@@ -16,6 +16,7 @@
 #include "nvs_flash.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_sleep.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -102,6 +103,12 @@ static button_t btn1;
 static void on_button(button_t *btn, button_state_t state)
 {
     ESP_LOGI(TAG, "Boot button %s", states[state]);
+    if (state == BUTTON_CLICKED)
+    {
+        const int deep_sleep_sec = 10;
+        ESP_LOGI(TAG, "Entering deep sleep for %d seconds", deep_sleep_sec);
+        esp_deep_sleep(1000000LL * deep_sleep_sec);
+    }
 }
 
 void button_init_task(void *pvParameters)
@@ -497,6 +504,7 @@ void app_main(void)
     xTaskCreate(blink_task, "blink", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     xTaskCreate(button_init_task, "button", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     initialise_wifi();
+
     // ESP_ERROR_CHECK(example_connect());
     // mqtt_app_start();
     ESP_LOGI(TAG, "RUN TO HERE");
