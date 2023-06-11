@@ -13,15 +13,163 @@
 #include "http_app.h"
 
 
+/*
+extern double eSpO2;
+extern double Ebpm;
+extern float ir_forWeb;
+extern float red_forWeb;
+extern uint32_t ir, red;
+void handle_getBPM_SpO2() {
+    char raw_JSON[1024];
+    DynamicJsonDocument doc(1024);
+
+    doc["millis"] = millis();
+    doc["BPM"] = Ebpm;
+    doc["SpO2"] = eSpO2;
+    doc["ir_forGraph"] = ir_forWeb;
+    doc["red_forGraph"] = red_forWeb;
+    doc["ir"] = ir;
+    doc["red"] = red;
+
+    serializeJson(doc, raw_JSON);
+    server.send(200, "application/json", raw_JSON);
+}
+
+extern uint32_t ESP_getFlashChipId();
+void handle_getSystemStatus() {
+    char compilationDate[50];
+    sprintf(compilationDate, "%s %s", __DATE__, __TIME__);
+    char raw_JSON[1024];
+    DynamicJsonDocument doc(1024);
+
+    doc["millis"] = millis();
+    doc["deviceName"] = DEVICE_NAME;
+    doc["STA_IP"] = WiFi.localIP();
+    doc["compilationDate"] = compilationDate;
+
+    doc["chipModel"] = ESP.getChipModel();
+    doc["chipRevision"] = ESP.getChipRevision();
+    doc["cpuFreqMHz"] = ESP.getCpuFreqMHz();
+    doc["chipCores"] = ESP.getChipCores();
+
+    doc["heapSizeKiB"] = ESP.getHeapSize() / 1024;
+    doc["freeHeapKiB"] = ESP.getFreeHeap() / 1024;
+
+    doc["psramSizeKiB"] = ESP.getPsramSize() / 1024;
+    doc["freePsramKiB"] = ESP.getFreePsram() / 1024;
+
+    doc["flashChipId"] = ESP_getFlashChipId();
+    doc["flashSpeedMHz"] = ESP.getFlashChipSpeed() / 1000000;
+    doc["flashSizeMib"] = ESP.getFlashChipSize() / 1024 / 1024;
+
+    doc["sketchMD5"] = ESP.getSketchMD5();
+    doc["sdkVersion"] = ESP.getSdkVersion();
+
+    serializeJson(doc, raw_JSON);
+    server.send(200, "application/json", raw_JSON);
+}
+
+void handle_setAPConfig() {
+    DynamicJsonDocument doc(1024);
+    //检查传入参数
+    if (server.args() == 0) {
+        return server.send(500, "text/plain", "BAD ARGS");
+    }
+    //反序列化 传入 json
+    DeserializationError error = deserializeJson(doc, server.arg("plain").c_str());
+    if (error) {
+        log_e("反序列化配置文件失败",error.f_str());
+        server.send(304, "application/json", "{\"msg\":\"write failed\"}");
+        return;
+    }
+
+    //修改 配置缓存
+    config_json["AP_ssid"] = doc["AP_ssid"];
+    //保存
+    if (saveConfigFile()) {
+        log_e("保存配置文件失败");
+        server.send(304, "application/json", "{\"msg\":\"write failed\"}");
+        return;
+    }
+    //成功返回
+    server.send(200, "application/json", "{\"msg\":\"successes\"}");
+}
+void handle_setSTAConfig() {
+    DynamicJsonDocument doc(1024);
+    //检查传入参数
+    if (server.args() == 0) {
+        return server.send(500, "text/plain", "BAD ARGS");
+    }
+    //反序列化 传入 json
+    DeserializationError error = deserializeJson(doc, server.arg("plain").c_str());
+    if (error) {
+        log_e("反序列化配置文件失败",error.f_str());
+        server.send(304, "application/json", "{\"msg\":\"write failed\"}");
+        return;
+    }
+
+    //修改 配置缓存
+    config_json["STA_ssid"] = doc["STA_ssid"];
+    config_json["STA_passwd"] = doc["STA_passwd"];
+
+    //保存
+    if (saveConfigFile()) {
+        log_e("保存配置文件失败");
+        server.send(304, "application/json", "{\"msg\":\"write failed\"}");
+        return;
+    }
+    //成功返回
+    server.send(200, "application/json", "{\"msg\":\"successes\"}");
+}
+void handle_dirtyHacker() {
+    //返回 肮脏的黑客
+    server.send(401, "application/json", "{\"msg\":\"Dirty hacker\"}");
+}
+//获取过滤后的配置信息
+void handle_getConfig() {
+    String JSON = R""({"AP_ssid":")"";
+    JSON += (const char*)config_json["AP_ssid"];
+    JSON += R""(","STA_ssid":")"";
+    JSON += (const char*)config_json["STA_ssid"];
+    JSON += R""("})"";
+    server.send(200, "application/json", JSON);
+}
+
+void webServer_Task(void* pvParameters) {
+    //解决 跨越域 的问题
+    server.enableCORS(); //This is the magic
+    //绑定web钩子函数
+    server.on("/getBPM_SpO2", handle_getBPM_SpO2);
+    server.on("/getSystemStatus", handle_getSystemStatus);
+    server.on("/setAPConfig", HTTP_POST, handle_setAPConfig);
+    server.on("/setSTAConfig", HTTP_POST, handle_setSTAConfig);
+    server.on("/getConfig", handle_getConfig);
+    //防止直接访问配置文件
+    server.on("/config.json", handle_dirtyHacker);
+    server.on("/reboot", []() {
+        server.send(200, "application/json", "{\"msg\":\"successes\"}");
+        vTaskDelay(1000);
+        abort();
+    });
+    server.onNotFound([]() {
+        if (!handleFileRead(server.uri())) {
+            server.send(404, "text/plain", "FileNotFound");
+        }
+        });
+    //启动web服务
+    server.begin();
+    log_d("HTTP server started");
+
+    while (1) {
+        esp_task_wdt_reset();
+        server.handleClient();
+    }
+}
+*/
+
 /* @brief tag used for ESP serial console messages */
 static const char TAG[] = "http_server";
 
-/* @brief the HTTP server handle */
-static httpd_handle_t httpd_handle = NULL;
-
-/* function pointers to URI handlers that can be user made */
-esp_err_t (*custom_get_httpd_uri_handler)(httpd_req_t *r) = NULL;
-esp_err_t (*custom_post_httpd_uri_handler)(httpd_req_t *r) = NULL;
 
 /* strings holding the URLs of the wifi manager */
 static char* http_root_url = NULL;
@@ -45,28 +193,6 @@ extern const uint8_t index_html_start[] asm("_binary_index_html_start");
 extern const uint8_t index_html_end[] asm("_binary_index_html_end");
 
 
-
-static esp_err_t http_server_delete_handler(httpd_req_t *req){
-
-	ESP_LOGI(TAG, "DELETE %s", req->uri);
-
-	/* DELETE /connect.json */
-	if(strcmp(req->uri, http_connect_url) == 0){
-		wifi_manager_disconnect_async();
-
-		httpd_resp_set_status(req, http_200_hdr);
-		httpd_resp_set_type(req, http_content_type_json);
-		httpd_resp_set_hdr(req, http_cache_control_hdr, http_cache_control_no_cache);
-		httpd_resp_set_hdr(req, http_pragma_hdr, http_pragma_no_cache);
-		httpd_resp_send(req, NULL, 0);
-	}
-	else{
-		httpd_resp_set_status(req, http_404_hdr);
-		httpd_resp_send(req, NULL, 0);
-	}
-
-	return ESP_OK;
-}
 
 
 static esp_err_t http_server_post_handler(httpd_req_t *req){
@@ -266,25 +392,6 @@ static esp_err_t http_server_get_handler(httpd_req_t *req){
 
 }
 
-/* URI wild card for any GET request */
-static const httpd_uri_t http_server_get_request = {
-    .uri       = "*",
-    .method    = HTTP_GET,
-    .handler   = http_server_get_handler
-};
-
-static const httpd_uri_t http_server_post_request = {
-	.uri	= "*",
-	.method = HTTP_POST,
-	.handler = http_server_post_handler
-};
-
-static const httpd_uri_t http_server_delete_request = {
-	.uri	= "*",
-	.method = HTTP_DELETE,
-	.handler = http_server_delete_handler
-};
-
 
 /**
  * @brief helper to generate URLs of the wifi manager
@@ -354,15 +461,6 @@ void http_app_start(bool lru_purge_enable){
 			http_status_url = http_app_generate_url(page_status);
 
 		}
-
-		err = httpd_start(&httpd_handle, &config);
-
-	    if (err == ESP_OK) {
-	        ESP_LOGI(TAG, "Registering URI handlers");
-	        httpd_register_uri_handler(httpd_handle, &http_server_get_request);
-	        httpd_register_uri_handler(httpd_handle, &http_server_post_request);
-	        httpd_register_uri_handler(httpd_handle, &http_server_delete_request);
-	    }
 	}
 
 }
