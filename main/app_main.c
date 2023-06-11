@@ -45,21 +45,15 @@
 #include "esp_sntp.h"
 #include <sht3x.h>
 #include "wifi_manager.h"
+#include "http_app.h"
 #include <button.h>
+#include "mqtt_credential.h"
 
 static const char *TAG = "AUTO_WATERING";
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
-static EventGroupHandle_t s_wifi_event_group;
 static esp_mqtt_client_handle_t mqtt_client;
-/* The event group allows multiple bits for each event,
-   but we only care about one event - are we connected
-   to the AP with an IP? */
-static const int CONNECTED_BIT = BIT0;
-static const int ESPTOUCH_DONE_BIT = BIT1;
-
 static void mqtt_app_start(void);
 
-static void smartconfig_example_task(void *parm);
 void read_temperature_humidity_task(void *arg);
 
 static void obtain_time(void);
@@ -74,6 +68,7 @@ void read_temperature_humidity_task(void *pvParameters)
 {
     float temperature;
     float humidity;
+    char jsonBuf[1024];
 
     sht3x_init_desc(&dev, CONFIG_EXAMPLE_SHT3X_ADDR, 0, CONFIG_EXAMPLE_I2C_MASTER_SDA, CONFIG_EXAMPLE_I2C_MASTER_SCL);
     sht3x_init(&dev);
@@ -84,13 +79,42 @@ void read_temperature_humidity_task(void *pvParameters)
     {
         // perform one measurement and do something with the results
         if (ESP_OK == sht3x_measure(&dev, &temperature, &humidity))
+        {
+            sprintf(jsonBuf, "{\"id\":123,\"dp\":%f}", temperature);
+            int msg_id = esp_mqtt_client_publish(mqtt_client, "$sys/wKPcNRoAZE/AutoWater111/thing/property/post", jsonBuf, 0, 0, 0);
+            ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
             ESP_LOGI(TAG, "SHT3x Sensor: %.2f °C, %.2f %%", temperature, humidity);
+        }
         else
             ESP_LOGE(TAG, "Fail to read SHT3x");
 
         // wait until 5 seconds are over
         vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(5000));
     }
+}
+
+void read_chip_temperature_task(void *arg)
+{
+    char jsonBuf[1024];
+    // Initialize touch pad peripheral, it will start a timer to run a filter
+    ESP_LOGI(TAG, "Initializing Temperature sensor");
+    float tsens_out;
+    temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
+    temp_sensor_get_config(&temp_sensor);
+    ESP_LOGI(TAG, "default dac %d, clk_div %d", temp_sensor.dac_offset, temp_sensor.clk_div);
+    temp_sensor.dac_offset = TSENS_DAC_DEFAULT; // DEFAULT: range:-10℃ ~  80℃, error < 1℃.
+    temp_sensor_set_config(temp_sensor);
+    temp_sensor_start();
+    ESP_LOGI(TAG, "Temperature sensor started");
+    while (1)
+    {
+        vTaskDelay(pdMS_TO_TICKS(10000));
+        temp_sensor_read_celsius(&tsens_out);
+        sprintf(jsonBuf, "{\"id\": \"%u\",\"version\": \"1.0\",\"params\": {\"SystemTemperature\": {\"value\":%f}}}", esp_random(), tsens_out);
+        int msg_id = esp_mqtt_client_publish(mqtt_client, "$sys/wKPcNRoAZE/AutoWater111/thing/property/post", jsonBuf, 0, 0, 0);
+        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+    }
+    vTaskDelete(NULL);
 }
 
 static const char *states[] = {
@@ -218,99 +242,6 @@ static void initialize_sntp(void)
     }
 }
 
-void tempsensor_example(void *arg)
-{
-    char jsonBuf[1024];
-    // Initialize touch pad peripheral, it will start a timer to run a filter
-    ESP_LOGI(TAG, "Initializing Temperature sensor");
-    float tsens_out;
-    temp_sensor_config_t temp_sensor = TSENS_CONFIG_DEFAULT();
-    temp_sensor_get_config(&temp_sensor);
-    ESP_LOGI(TAG, "default dac %d, clk_div %d", temp_sensor.dac_offset, temp_sensor.clk_div);
-    temp_sensor.dac_offset = TSENS_DAC_DEFAULT; // DEFAULT: range:-10℃ ~  80℃, error < 1℃.
-    temp_sensor_set_config(temp_sensor);
-    temp_sensor_start();
-    ESP_LOGI(TAG, "Temperature sensor started");
-    while (1)
-    {
-        vTaskDelay(5000 / portTICK_RATE_MS);
-        temp_sensor_read_celsius(&tsens_out);
-        ESP_LOGI(TAG, "Temperature out celsius %f°C", tsens_out);
-        sprintf(jsonBuf, "{\"id\":123,\"dp\":%f}", tsens_out);
-        int msg_id = esp_mqtt_client_publish(mqtt_client, "/topic/qos0", jsonBuf, 0, 0, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
-    }
-    vTaskDelete(NULL);
-}
-
-static void event_handler(void *arg, esp_event_base_t event_base,
-                          int32_t event_id, void *event_data)
-{
-    if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START)
-    {
-        // xTaskCreate(smartconfig_example_task, "smartconfig_example_task", 4096, NULL, 3, NULL);
-    }
-    else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED)
-    {
-        ESP_LOGI(TAG, "WIFI_EVENT_STA_DISCONNECTED");
-        esp_wifi_connect();
-        xEventGroupClearBits(s_wifi_event_group, CONNECTED_BIT);
-    }
-    else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP)
-    {
-        xEventGroupSetBits(s_wifi_event_group, CONNECTED_BIT);
-    }
-    else if (event_base == SC_EVENT && event_id == SC_EVENT_SCAN_DONE)
-    {
-        ESP_LOGI(TAG, "Scan done");
-    }
-    else if (event_base == SC_EVENT && event_id == SC_EVENT_FOUND_CHANNEL)
-    {
-        ESP_LOGI(TAG, "Found channel");
-    }
-    else if (event_base == SC_EVENT && event_id == SC_EVENT_GOT_SSID_PSWD)
-    {
-        ESP_LOGI(TAG, "Got SSID and password");
-
-        smartconfig_event_got_ssid_pswd_t *evt = (smartconfig_event_got_ssid_pswd_t *)event_data;
-        wifi_config_t wifi_config;
-        uint8_t ssid[33] = {0};
-        uint8_t password[65] = {0};
-        uint8_t rvd_data[33] = {0};
-
-        bzero(&wifi_config, sizeof(wifi_config_t));
-        memcpy(wifi_config.sta.ssid, evt->ssid, sizeof(wifi_config.sta.ssid));
-        memcpy(wifi_config.sta.password, evt->password, sizeof(wifi_config.sta.password));
-        wifi_config.sta.bssid_set = evt->bssid_set;
-        if (wifi_config.sta.bssid_set == true)
-        {
-            memcpy(wifi_config.sta.bssid, evt->bssid, sizeof(wifi_config.sta.bssid));
-        }
-
-        memcpy(ssid, evt->ssid, sizeof(evt->ssid));
-        memcpy(password, evt->password, sizeof(evt->password));
-        ESP_LOGI(TAG, "SSID:%s", ssid);
-        ESP_LOGI(TAG, "PASSWORD:%s", password);
-        if (evt->type == SC_TYPE_ESPTOUCH_V2)
-        {
-            ESP_ERROR_CHECK(esp_smartconfig_get_rvd_data(rvd_data, sizeof(rvd_data)));
-            ESP_LOGI(TAG, "RVD_DATA:");
-            for (int i = 0; i < 33; i++)
-            {
-                printf("%02x ", rvd_data[i]);
-            }
-            printf("\n");
-        }
-
-        ESP_ERROR_CHECK(esp_wifi_disconnect());
-        ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
-        esp_wifi_connect();
-    }
-    else if (event_base == SC_EVENT && event_id == SC_EVENT_SEND_ACK_DONE)
-    {
-        xEventGroupSetBits(s_wifi_event_group, ESPTOUCH_DONE_BIT);
-    }
-}
 /**
  * @brief this is an exemple of a callback that you can setup in your own app to get notified of wifi manager event.
  */
@@ -323,7 +254,33 @@ void cb_connection_ok(void *pvParameter)
     esp_ip4addr_ntoa(&param->ip_info.ip, str_ip, IP4ADDR_STRLEN_MAX);
 
     ESP_LOGI(TAG, "I have a connection and my IP is %s!", str_ip);
+    gpio_set_level(GPIO_NUM_13, 1);
     xTaskCreate(time_init_task, "time", 2048, NULL, 5, NULL);
+    mqtt_app_start();
+}
+
+static esp_err_t my_get_handler(httpd_req_t *req)
+{
+
+    /* our custom page sits at /helloworld in this example */
+    if (strcmp(req->uri, "/helloworld") == 0)
+    {
+
+        ESP_LOGI(TAG, "Serving page /helloworld");
+
+        const char *response = "<html><body><h1>Hello World!</h1></body></html>";
+
+        httpd_resp_set_status(req, "200 OK");
+        httpd_resp_set_type(req, "text/html");
+        httpd_resp_send(req, response, strlen(response));
+    }
+    else
+    {
+        /* send a 404 otherwise */
+        httpd_resp_send_404(req);
+    }
+
+    return ESP_OK;
 }
 
 static void initialise_wifi(void)
@@ -349,42 +306,7 @@ static void initialise_wifi(void)
 
     /* register a callback as an example to how you can integrate your code with the wifi manager */
     wifi_manager_set_callback(WM_EVENT_STA_GOT_IP, &cb_connection_ok);
-}
-
-static void smartconfig_example_task(void *parm)
-{
-    EventBits_t uxBits;
-    wifi_config_t myconfig = {0};
-
-    esp_wifi_get_config(ESP_IF_WIFI_STA, &myconfig);
-    if (strlen((char *)myconfig.sta.ssid) > 0)
-    {
-        ESP_LOGI(TAG, "already set SSID:%s,connect now!...", myconfig.sta.ssid);
-        esp_wifi_connect();
-    }
-    else
-    {
-        ESP_ERROR_CHECK(esp_smartconfig_set_type(SC_TYPE_ESPTOUCH));
-        smartconfig_start_config_t cfg = SMARTCONFIG_START_CONFIG_DEFAULT();
-        ESP_ERROR_CHECK(esp_smartconfig_start(&cfg));
-    }
-    while (1)
-    {
-        uxBits = xEventGroupWaitBits(s_wifi_event_group, CONNECTED_BIT | ESPTOUCH_DONE_BIT, true, false, portMAX_DELAY);
-        if (uxBits & CONNECTED_BIT)
-        {
-            ESP_LOGI(TAG, "WiFi Connected to ap");
-            mqtt_app_start();
-            xTaskCreate(time_init_task, "time", 2048, NULL, 5, NULL);
-            xTaskCreate(tempsensor_example, "temp", 4096, NULL, 5, NULL);
-        }
-        if (uxBits & ESPTOUCH_DONE_BIT)
-        {
-            ESP_LOGI(TAG, "smartconfig over");
-            esp_smartconfig_stop();
-            vTaskDelete(NULL);
-        }
-    }
+    http_app_set_handler_hook(HTTP_GET, &my_get_handler);
 }
 
 static void log_error_if_nonzero(const char *message, int error_code)
@@ -415,17 +337,20 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
     {
     case MQTT_EVENT_CONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
-        msg_id = esp_mqtt_client_publish(client, "/topic/qos1", "data_3", 0, 1, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+        // msg_id = esp_mqtt_client_publish(client, "/topic/qos1", "data_3", 0, 1, 0);
+        // ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
 
-        msg_id = esp_mqtt_client_subscribe(client, "/topic/qos0", 0);
+        // msg_id = esp_mqtt_client_subscribe(client, "/topic/qos0", 0);
+        // ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+
+        msg_id = esp_mqtt_client_subscribe(client, "$sys/wKPcNRoAZE/AutoWater111/thing/property/post/reply", 1);
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
-        msg_id = esp_mqtt_client_subscribe(client, "/topic/qos1", 1);
-        ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
+        xTaskCreate(read_chip_temperature_task, "temp1", 4096, NULL, 5, NULL);
+        xTaskCreate(read_temperature_humidity_task, "temp2", 4096, NULL, 5, NULL);
 
-        msg_id = esp_mqtt_client_unsubscribe(client, "/topic/qos1");
-        ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
+        // msg_id = esp_mqtt_client_unsubscribe(client, "/topic/qos1");
+        // ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -433,8 +358,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
     case MQTT_EVENT_SUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
-        msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
-        ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
+        // msg_id = esp_mqtt_client_publish(client, "/topic/qos0", "data", 0, 0, 0);
+        // ESP_LOGI(TAG, "sent publish successful, msg_id=%d", msg_id);
         break;
     case MQTT_EVENT_UNSUBSCRIBED:
         ESP_LOGI(TAG, "MQTT_EVENT_UNSUBSCRIBED, msg_id=%d", event->msg_id);
@@ -444,8 +369,8 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         break;
     case MQTT_EVENT_DATA:
         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
-        // printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
-        // printf("DATA=%.*s\r\n", event->data_len, event->data);
+        printf("TOPIC=%.*s\r\n", event->topic_len, event->topic);
+        printf("DATA=%.*s\r\n", event->data_len, event->data);
         break;
     case MQTT_EVENT_ERROR:
         ESP_LOGI(TAG, "MQTT_EVENT_ERROR");
@@ -466,8 +391,10 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 static void mqtt_app_start(void)
 {
     esp_mqtt_client_config_t mqtt_cfg = {
-        .uri = CONFIG_BROKER_URL,
-    };
+        .client_id = CONFIG_MQTT_CLIENT_ID,
+        .uri = CONFIG_MY_BROKER_URL,
+        .username = CONFIG_MQTT_USERNAME,
+        .password = CONFIG_MQTT_PASSWORD};
     mqtt_client = esp_mqtt_client_init(&mqtt_cfg);
     /* The last argument may be used to pass data to the event handler, in this example mqtt_event_handler */
     esp_mqtt_client_register_event(mqtt_client, ESP_EVENT_ANY_ID, mqtt_event_handler, NULL);
@@ -499,8 +426,7 @@ void app_main(void)
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
-    // xTaskCreate(tempsensor_example, "temp", 4096, NULL, 5, NULL);
-    xTaskCreate(read_temperature_humidity_task, "temp", 4096, NULL, 5, NULL);
+
     xTaskCreate(blink_task, "blink", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     xTaskCreate(button_init_task, "button", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     initialise_wifi();

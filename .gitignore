@@ -54,3 +54,4 @@ dkms.conf
 
 build/
 sdkconfig.old
+main/mqtt_credential.h
