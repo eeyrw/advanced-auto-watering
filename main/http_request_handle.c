@@ -347,6 +347,8 @@ static esp_err_t my_get_handler(httpd_req_t *req)
 		rawJsonStr = cJSON_Print(infoJson);
 		httpd_resp_send(req,rawJsonStr,strlen(rawJsonStr));
 		cJSON_Delete(infoJson);
+		if(rawJsonStr!=NULL)
+			free(rawJsonStr);
 	}
 	else
 	{
