@@ -247,6 +247,7 @@ static esp_err_t my_post_handler(httpd_req_t *req)
 	return ret;
 }
 
+extern char global_str_ip[];
 static esp_err_t get_system_info(cJSON** pInfoJson)
 {
 	// doc["millis"] = millis();
@@ -287,8 +288,8 @@ static esp_err_t get_system_info(cJSON** pInfoJson)
 
 	/* 添加一条字符串类型的JSON数据(添加一个链表节点) */
 	cJSON_AddStringToObject((*pInfoJson), "deviceName", pAppInfo->project_name);
-	cJSON_AddStringToObject((*pInfoJson), "STA_IP", "AUTO WATERING");
-	cJSON_AddStringToObject((*pInfoJson), "compilationDate", "AUTO WATERING");
+	cJSON_AddStringToObject((*pInfoJson), "STA_IP", global_str_ip);
+	cJSON_AddStringToObject((*pInfoJson), "compilationDate", "UNKNOWN");
 	cJSON_AddNumberToObject((*pInfoJson), "chipModel", chipInfo.model);
 	cJSON_AddNumberToObject((*pInfoJson), "chipRevision", chipInfo.revision);
 	cJSON_AddNumberToObject((*pInfoJson), "cpuFreqMHz", 40);
