@@ -167,17 +167,17 @@ void webServer_Task(void* pvParameters) {
 }
 */
 
-extern const uint8_t _assets_css_bootstrap_min_css_start[] asm("_assets_css_bootstrap_min_css_start");
-extern const uint8_t _assets_css_bootstrap_min_css_end[] asm("_assets_css_bootstrap_min_css_end");
+extern const uint8_t _binary_bootstrap_min_css_start[] asm("_binary_bootstrap_min_css_start");
+extern const uint8_t _binary_bootstrap_min_css_end[] asm("_binary_bootstrap_min_css_end");
 
-extern const uint8_t _assets_js_bootstrap_bundle_min_js_start[] asm("_assets_js_bootstrap_bundle_min_js_start");
-extern const uint8_t _assets_js_bootstrap_bundle_min_js_end[] asm("_assets_js_bootstrap_bundle_min_js_end");
+extern const uint8_t _binary_bootstrap_bundle_min_js_start[] asm("_binary_bootstrap_bundle_min_js_start");
+extern const uint8_t _binary_bootstrap_bundle_min_js_end[] asm("_binary_bootstrap_bundle_min_js_end");
 
-extern const uint8_t _assets_js_chart_min_js_start[] asm("_assets_js_chart_min_js_start");
-extern const uint8_t _assets_js_chart_min_js_end[] asm("_assets_js_chart_min_js_end");
+extern const uint8_t _binary_chart_min_js_start[] asm("_binary_chart_min_js_start");
+extern const uint8_t _binary_chart_min_js_end[] asm("_binary_chart_min_js_end");
 
-extern const uint8_t _assets_my_index_html_start[] asm("_assets_my_index_html_start");
-extern const uint8_t _assets_my_index_html_end[] asm("_assets_my_index_html_end");
+extern const uint8_t _binary_my_index_html_start[] asm("_binary_my_index_html_start");
+extern const uint8_t _binary_my_index_html_end[] asm("_binary_my_index_html_end");
 
 static esp_err_t my_post_handler(httpd_req_t *req)
 {
@@ -278,6 +278,10 @@ static esp_err_t get_system_info(cJSON** pInfoJson)
 
 	pAppInfo = esp_ota_get_app_description();
 
+	uint32_t flashSize;
+	uint32_t flashSpeed;
+	esp_flash_get_size(NULL,&flashSize);
+
 	/* 创建一个JSON数据对象(链表头结点) */
 	(*pInfoJson) = cJSON_CreateObject();
 
@@ -287,15 +291,17 @@ static esp_err_t get_system_info(cJSON** pInfoJson)
 	cJSON_AddStringToObject((*pInfoJson), "compilationDate", "AUTO WATERING");
 	cJSON_AddNumberToObject((*pInfoJson), "chipModel", chipInfo.model);
 	cJSON_AddNumberToObject((*pInfoJson), "chipRevision", chipInfo.revision);
-	cJSON_AddNumberToObject((*pInfoJson), "cpuFreqMHz", chipInfo.cores);
+	cJSON_AddNumberToObject((*pInfoJson), "cpuFreqMHz", 40);
 	cJSON_AddNumberToObject((*pInfoJson), "chipCores", chipInfo.cores);
 	cJSON_AddNumberToObject((*pInfoJson), "heapSizeKiB", esp_get_free_heap_size()/1024.F);
 	cJSON_AddNumberToObject((*pInfoJson), "freeHeapKiB", esp_get_free_heap_size()/1024.F);
+	cJSON_AddNumberToObject((*pInfoJson), "psramSizeKiB", 0);
+	cJSON_AddNumberToObject((*pInfoJson), "freePsramKiB", 0);
 	cJSON_AddStringToObject((*pInfoJson), "flashChipId", "UNKNOWN");
 	cJSON_AddNumberToObject((*pInfoJson), "flashSpeedMHz", 0);
-	cJSON_AddNumberToObject((*pInfoJson), "flashSizeMib", 0);
+	cJSON_AddNumberToObject((*pInfoJson), "flashSizeMib", flashSize/1024/1024);
 	cJSON_AddStringToObject((*pInfoJson), "sketchMD5", "UNKNOWN");
-	cJSON_AddStringToObject((*pInfoJson), "sdkVersion", "UNKNOWN");
+	cJSON_AddStringToObject((*pInfoJson), "sdkVersion", pAppInfo->idf_ver);
 
 
 	return ESP_OK;
@@ -313,29 +319,29 @@ static esp_err_t my_get_handler(httpd_req_t *req)
 	{
 		httpd_resp_set_status(req, "200 OK");
 		httpd_resp_set_type(req, "text/html");
-		httpd_resp_send(req, (const char *)_assets_my_index_html_start,
-						_assets_my_index_html_end - _assets_my_index_html_start);
+		httpd_resp_send(req, (const char *)_binary_my_index_html_start,
+						_binary_my_index_html_end - _binary_my_index_html_start);
 	}
 	else if (strcmp(req->uri, "/js/chart.min.js") == 0)
 	{
 		httpd_resp_set_status(req, "200 OK");
 		httpd_resp_set_type(req, "text/javascript");
-		httpd_resp_send(req, (const char *)_assets_js_chart_min_js_start,
-						_assets_js_chart_min_js_end - _assets_js_chart_min_js_start);
+		httpd_resp_send(req, (const char *)_binary_chart_min_js_start,
+						_binary_chart_min_js_end - _binary_chart_min_js_start);
 	}
 	else if (strcmp(req->uri, "/js/bootstrap.bundle.min.js") == 0)
 	{
 		httpd_resp_set_status(req, "200 OK");
 		httpd_resp_set_type(req, "text/javascript");
-		httpd_resp_send(req, (const char *)_assets_js_bootstrap_bundle_min_js_start,
-						_assets_js_bootstrap_bundle_min_js_end - _assets_js_bootstrap_bundle_min_js_start);
+		httpd_resp_send(req, (const char *)_binary_bootstrap_bundle_min_js_start,
+						_binary_bootstrap_bundle_min_js_end - _binary_bootstrap_bundle_min_js_start);
 	}
 	else if (strcmp(req->uri, "/css/bootstrap.min.css") == 0)
 	{
 		httpd_resp_set_status(req, "200 OK");
 		httpd_resp_set_type(req, "text/css");
-		httpd_resp_send(req, (const char *)_assets_css_bootstrap_min_css_start,
-						_assets_css_bootstrap_min_css_end - _assets_css_bootstrap_min_css_start);
+		httpd_resp_send(req, (const char *)_binary_bootstrap_min_css_start,
+						_binary_bootstrap_min_css_end - _binary_bootstrap_min_css_start);
 	}
 	else if (strcmp(req->uri, "/getSystemStatus") == 0)
 	{
@@ -474,7 +480,7 @@ static esp_err_t my_get_handler(httpd_req_t *req)
 	return ret;
 }
 
-void my_http_app_init()
+void my_http_app_init(void)
 {
 	http_app_set_handler_hook(HTTP_GET, &my_get_handler);
 	http_app_set_handler_hook(HTTP_POST, &my_post_handler);

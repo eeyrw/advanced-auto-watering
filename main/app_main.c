@@ -282,7 +282,7 @@ static esp_err_t my_get_handler(httpd_req_t *req)
 
     return ESP_OK;
 }
-
+extern void my_http_app_init(void);
 static void initialise_wifi(void)
 {
     // ESP_ERROR_CHECK(esp_netif_init());
@@ -306,7 +306,7 @@ static void initialise_wifi(void)
 
     /* register a callback as an example to how you can integrate your code with the wifi manager */
     wifi_manager_set_callback(WM_EVENT_STA_GOT_IP, &cb_connection_ok);
-    http_app_set_handler_hook(HTTP_GET, &my_get_handler);
+    my_http_app_init();
 }
 
 static void log_error_if_nonzero(const char *message, int error_code)
