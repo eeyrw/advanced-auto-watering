@@ -182,7 +182,7 @@ void time_init_task(void *arg)
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
     ESP_LOGI("TIME_INIT", "The date/time in Shanghai before syncing to NTP is: %s", strftime_buf);
     double deltaSec = difftime(now, lastSyncTime);
-    if (deltaSec>50 || timeinfo.tm_year < (2023-1900))
+    if (deltaSec>60*30 || timeinfo.tm_year < (2023-1900))
     {
         localtime_r(&lastSyncTime, &timeinfo);
         strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
