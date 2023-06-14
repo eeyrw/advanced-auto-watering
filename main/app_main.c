@@ -168,35 +168,39 @@ void blink_task(void *pvParameters)
         vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(50));
     }
 }
-
+RTC_DATA_ATTR time_t lastSyncTime;
 void time_init_task(void *arg)
 {
     time_t now;
     struct tm timeinfo;
-    time(&now);
-    localtime_r(&now, &timeinfo);
-    // Is time set? If not, tm_year will be (1970 - 1900).
-    // if (timeinfo.tm_year < (2016 - 1900)) {
-    ESP_LOGI(TAG, "Time is not set yet. Connecting to WiFi and getting time over NTP.");
-    obtain_time();
-    // update 'now' variable with current time
-    time(&now);
-    //}
-
     char strftime_buf[64];
-
     // Set timezone to China Standard Time
     setenv("TZ", "CST-8", 1);
     tzset();
+    time(&now);
     localtime_r(&now, &timeinfo);
     strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI(TAG, "The current date/time in Shanghai is: %s", strftime_buf);
+    ESP_LOGI("TIME_INIT", "The date/time in Shanghai before syncing to NTP is: %s", strftime_buf);
+    double deltaSec = difftime(now, lastSyncTime);
+    if (deltaSec>50 || timeinfo.tm_year < (2023-1900))
+    {
+        localtime_r(&lastSyncTime, &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+        ESP_LOGI("TIME_INIT", "Sync from NTP is: %s", strftime_buf);        
+        ESP_LOGW("TIME_INIT", "Time is not set yet. Connecting to WiFi and getting time over NTP.");
+        obtain_time();
+        // update 'now' variable with current time
+        time(&now);
+        lastSyncTime = now;
+        localtime_r(&now, &timeinfo);
+        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
+        ESP_LOGI("TIME_INIT", "The current date/time in Shanghai after syncing to NTP is: %s", strftime_buf);
+    }
     vTaskDelete(NULL);
 }
 
 static void obtain_time(void)
 {
-
     initialize_sntp();
 
     // wait for time to be set
@@ -204,9 +208,14 @@ static void obtain_time(void)
     struct tm timeinfo = {0};
     int retry = 0;
     const int retry_count = 15;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count)
+    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET)
     {
-        ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
+        if(++retry >= retry_count)
+        {
+            ESP_LOGE("TIME_INIT", "Fail to sync time by NTP within %d tries.", retry_count);
+            break;
+        }
+        ESP_LOGI("TIME_INIT", "Waiting for system time to be set... (%d/%d)", retry, retry_count);
         vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
     time(&now);
@@ -242,7 +251,7 @@ static void initialize_sntp(void)
         }
     }
 }
-char global_str_ip[16]; 
+char global_str_ip[16];
 /**
  * @brief this is an exemple of a callback that you can setup in your own app to get notified of wifi manager event.
  */
@@ -251,7 +260,7 @@ void cb_connection_ok(void *pvParameter)
     ip_event_got_ip_t *param = (ip_event_got_ip_t *)pvParameter;
 
     /* transform IP to human readable string */
-    
+
     esp_ip4addr_ntoa(&param->ip_info.ip, global_str_ip, IP4ADDR_STRLEN_MAX);
 
     ESP_LOGI(TAG, "I have a connection and my IP is %s!", global_str_ip);
@@ -431,7 +440,7 @@ void app_main(void)
     xTaskCreate(blink_task, "blink", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     xTaskCreate(button_init_task, "button", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     initialise_wifi();
-    struct tagWateringManager* pWM;
+    struct tagWateringManager *pWM;
     pWM = GetInstance();
 
     // ESP_ERROR_CHECK(example_connect());
