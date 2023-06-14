@@ -15,19 +15,30 @@ void WateringManager::InitConfigFromNVS(void)
     std::unique_ptr<nvs::NVSHandle> handle = nvs::open_nvs_handle("watering_config", NVS_READWRITE, &err);
     if (err != ESP_OK)
     {
-        ESP_LOGI(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error (%s) opening NVS handle!\n", esp_err_to_name(err));
     }
     else
     {
-        err = NVSReadWithDefault(handle, "wateringIntervalSec", wateringIntervalSec, wateringIntervalSec_default);
-        err = NVSReadWithDefault(handle, "wateringDurationSec", wateringDurationSec, wateringDurationSec_default);
-
+        err = NVSReadWithDefault(handle, "waterIntvlSec", waterIntvlSec, waterIntvlSec_default);
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Error (%s) NVSReadWithDefault!\n", esp_err_to_name(err));
+        }
+        err = NVSReadWithDefault(handle, "waterDurSec", waterDurSec, waterDurSec_default);
+        if (err != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Error (%s) NVSReadWithDefault!\n", esp_err_to_name(err));
+        }
         // Commit written value.
         // After setting any values, nvs_commit() must be called to ensure changes are written
         // to flash storage. Implementations may write to storage at other times,
         // but this is not guaranteed.
         ESP_LOGI(TAG, "Committing updates in NVS ... ");
         err = handle->commit();
+        if (err != ESP_OK)
+        {
+            ESP_LOGI(TAG, "Error (%s) commit!\n", esp_err_to_name(err));
+        }
     }
 }
 

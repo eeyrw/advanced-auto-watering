@@ -16,8 +16,8 @@ class WateringManager
 {
 private:
     /* data */
-    int wateringIntervalSec;
-    int wateringDurationSec;
+    int waterIntvlSec;
+    int waterDurSec;
     int lastWateringTimestamp;
 
     void InitConfigFromNVS(void);
@@ -27,8 +27,8 @@ public:
     ~WateringManager();
 };
 static const char *TAG = "WATERING_MANAGER";
-const int wateringIntervalSec_default = 12 * 60 * 60;
-const int wateringDurationSec_default = 60;
+const int waterIntvlSec_default = 12 * 60 * 60;
+const int waterDurSec_default = 60;
 
 template <typename T>
 esp_err_t NVSReadWithDefault(std::unique_ptr<nvs::NVSHandle> &handle, const char *key, T &value, const T &defaultValue)
@@ -43,11 +43,15 @@ esp_err_t NVSReadWithDefault(std::unique_ptr<nvs::NVSHandle> &handle, const char
         ESP_LOGI(TAG, "%s = %d", key, value);
         break;
     case ESP_ERR_NVS_NOT_FOUND:
-        ESP_LOGI(TAG, "The value is not initialized yet!");
-        handle->set_item(key, defaultValue);
+        ESP_LOGW(TAG, "The value is not initialized yet!");
+        err = handle->set_item(key, defaultValue);
+        if(err!=ESP_OK)
+        {
+            ESP_LOGE(TAG, "Error (%s) set_item!\n", esp_err_to_name(err));
+        }
         break;
     default:
-        ESP_LOGI(TAG, "Error (%s) reading!\n", esp_err_to_name(err));
+        ESP_LOGE(TAG, "Error (%s) reading!\n", esp_err_to_name(err));
     }
     return err;
 }

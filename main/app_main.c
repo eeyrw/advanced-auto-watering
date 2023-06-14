@@ -431,6 +431,8 @@ void app_main(void)
     xTaskCreate(blink_task, "blink", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     xTaskCreate(button_init_task, "button", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     initialise_wifi();
+    struct tagWateringManager* pWM;
+    pWM = GetInstance();
 
     // ESP_ERROR_CHECK(example_connect());
     // mqtt_app_start();
