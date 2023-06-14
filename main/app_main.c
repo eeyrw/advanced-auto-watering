@@ -48,7 +48,7 @@
 #include "http_app.h"
 #include <button.h>
 #include "mqtt_credential.h"
-#include "WateringManager.h"
+#include "WateringManagerWrapper.h"
 
 static const char *TAG = "AUTO_WATERING";
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
@@ -431,7 +431,6 @@ void app_main(void)
     xTaskCreate(blink_task, "blink", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     xTaskCreate(button_init_task, "button", configMINIMAL_STACK_SIZE, NULL, 5, NULL);
     initialise_wifi();
-    InitWateringManager();
 
     // ESP_ERROR_CHECK(example_connect());
     // mqtt_app_start();
