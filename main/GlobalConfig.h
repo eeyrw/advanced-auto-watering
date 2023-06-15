@@ -82,6 +82,9 @@ esp_err_t ConfigRead(const char *ns, const char *key, T &value)
     return err;
 }
 
+template <>
+esp_err_t ConfigRead<std::string>(const char *ns, const char *key, std::string &value);
+
 template <typename T>
 esp_err_t ConfigWrite(const char *ns, const char *key, const T &value)
 {
