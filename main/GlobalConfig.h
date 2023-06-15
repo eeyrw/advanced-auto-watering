@@ -2,6 +2,7 @@
 #define GLOBAL_CONFIG_VALUE_H
 
 #include <any>
+#include <variant>
 #include <vector>
 #include <string>
 #include <map>
@@ -16,7 +17,7 @@
 #include "esp_system.h"
 #include "esp_log.h"
 
-extern const std::map<const char *, std::map<const char *, std::any>> GlobalConfigMap;
+extern const std::map<const char *, std::map<const char *, std::variant<std::string, int, bool>>> GlobalConfigMap;
 
 template <typename T>
 esp_err_t ConfigRead(const char *ns, const char *key, T &value)
@@ -40,7 +41,7 @@ esp_err_t ConfigRead(const char *ns, const char *key, T &value)
         }
         else
         {
-            auto defaultValue = std::any_cast<T>(kvPairIter->second);
+            auto defaultValue = std::get<T>(kvPairIter->second);
 
             if (err != ESP_OK)
             {
@@ -61,6 +62,7 @@ esp_err_t ConfigRead(const char *ns, const char *key, T &value)
                              key);
                     err = handle->set_item(key, defaultValue);
                     err = handle->commit();
+                    value = defaultValue;
                     if (err != ESP_OK)
                     {
                         ESP_LOGE("GLOBAL_CONFIG", "Fail to update "
@@ -133,4 +135,8 @@ esp_err_t ConfigWrite(const char *ns, const char *key, const T &value)
 
     return err;
 }
+
+template <>
+esp_err_t ConfigWrite(const char *ns, const char *key, const std::string &value);
+
 #endif

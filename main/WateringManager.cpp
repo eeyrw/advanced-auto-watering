@@ -18,11 +18,18 @@ static const char *TAG = "WATERING_MANAGER";
 void WateringManager::InitConfigFromNVS(void)
 {
     esp_err_t err;
-    int t;
-    ConfigRead("watering_config", "waterDurSec", t);
-    ConfigWrite("watering_config", "waterDurSec", t);
+    int t = 0;
+
+    // err = ConfigWrite("watering_config", "waterDurSec", t);
+    // ESP_LOGI(TAG,"Write waterDurSec=%d",t);
+    //err = ConfigRead("watering_config", "waterDurSec", t);
+    //ESP_LOGI(TAG,"Read waterDurSec=%d",t);
+    std::string ssw("Hahaha~!");
     std::string ss;
-    ConfigRead("Watering_config","waterMode",ss);
+    // ConfigWrite("watering_config","waterMode",ssw);
+    // ESP_LOGI(TAG,"Write waterMode=%s",ssw.c_str());
+    ConfigRead("watering_config","waterNm",ss);
+    ESP_LOGI(TAG,"Read waterNm=%s",ss.c_str());
 }
 
 WateringManager::WateringManager(/* args */)
