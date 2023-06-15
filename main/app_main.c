@@ -49,6 +49,7 @@
 #include <button.h>
 #include "mqtt_credential.h"
 #include "WateringManagerWrapper.h"
+#include "TimeManger.h"
 
 static const char *TAG = "AUTO_WATERING";
 /* FreeRTOS event group to signal when we are connected & ready to make a request */
@@ -57,13 +58,9 @@ static void mqtt_app_start(void);
 
 void read_temperature_humidity_task(void *arg);
 
-static void obtain_time(void);
-static void initialize_sntp(void);
 
-void time_sync_notification_cb(struct timeval *tv)
-{
-    ESP_LOGI(TAG, "Notification of a time synchronization event");
-}
+
+
 static sht3x_t dev;
 void read_temperature_humidity_task(void *pvParameters)
 {
@@ -168,89 +165,7 @@ void blink_task(void *pvParameters)
         vTaskDelayUntil(&last_wakeup, pdMS_TO_TICKS(50));
     }
 }
-RTC_DATA_ATTR time_t lastSyncTime;
-void time_init_task(void *arg)
-{
-    time_t now;
-    struct tm timeinfo;
-    char strftime_buf[64];
-    // Set timezone to China Standard Time
-    setenv("TZ", "CST-8", 1);
-    tzset();
-    time(&now);
-    localtime_r(&now, &timeinfo);
-    strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-    ESP_LOGI("TIME_INIT", "The date/time in Shanghai before syncing to NTP is: %s", strftime_buf);
-    double deltaSec = difftime(now, lastSyncTime);
-    if (deltaSec>60*30 || timeinfo.tm_year < (2023-1900))
-    {
-        localtime_r(&lastSyncTime, &timeinfo);
-        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-        ESP_LOGI("TIME_INIT", "Sync from NTP is: %s", strftime_buf);        
-        ESP_LOGW("TIME_INIT", "Time is not set yet. Connecting to WiFi and getting time over NTP.");
-        obtain_time();
-        // update 'now' variable with current time
-        time(&now);
-        lastSyncTime = now;
-        localtime_r(&now, &timeinfo);
-        strftime(strftime_buf, sizeof(strftime_buf), "%c", &timeinfo);
-        ESP_LOGI("TIME_INIT", "The current date/time in Shanghai after syncing to NTP is: %s", strftime_buf);
-    }
-    vTaskDelete(NULL);
-}
 
-static void obtain_time(void)
-{
-    initialize_sntp();
-
-    // wait for time to be set
-    time_t now = 0;
-    struct tm timeinfo = {0};
-    int retry = 0;
-    const int retry_count = 15;
-    while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET)
-    {
-        if(++retry >= retry_count)
-        {
-            ESP_LOGE("TIME_INIT", "Fail to sync time by NTP within %d tries.", retry_count);
-            break;
-        }
-        ESP_LOGI("TIME_INIT", "Waiting for system time to be set... (%d/%d)", retry, retry_count);
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
-    }
-    time(&now);
-    localtime_r(&now, &timeinfo);
-}
-
-static void initialize_sntp(void)
-{
-    ESP_LOGI(TAG, "Initializing SNTP");
-    sntp_setoperatingmode(SNTP_OPMODE_POLL);
-
-    // otherwise, use DNS address from a pool
-    sntp_setservername(0, "cn.pool.ntp.org");
-    sntp_setservername(1, "pool.ntp.org"); // set the secondary NTP server (will be used only if SNTP_MAX_SERVERS > 1)
-    sntp_set_time_sync_notification_cb(time_sync_notification_cb);
-    sntp_init();
-
-    ESP_LOGI(TAG, "List of configured NTP servers:");
-
-    for (uint8_t i = 0; i < SNTP_MAX_SERVERS; ++i)
-    {
-        if (sntp_getservername(i))
-        {
-            ESP_LOGI(TAG, "server %d: %s", i, sntp_getservername(i));
-        }
-        else
-        {
-            // we have either IPv4 or IPv6 address, let's print it
-            char buff[INET6_ADDRSTRLEN];
-            ip_addr_t const *ip = sntp_getserver(i);
-            if (ipaddr_ntoa_r(ip, buff, INET6_ADDRSTRLEN) != NULL)
-                ESP_LOGI(TAG, "server %d: %s", i, buff);
-        }
-    }
-}
 char global_str_ip[16];
 /**
  * @brief this is an exemple of a callback that you can setup in your own app to get notified of wifi manager event.
@@ -269,48 +184,9 @@ void cb_connection_ok(void *pvParameter)
     mqtt_app_start();
 }
 
-static esp_err_t my_get_handler(httpd_req_t *req)
-{
-
-    /* our custom page sits at /helloworld in this example */
-    if (strcmp(req->uri, "/helloworld") == 0)
-    {
-
-        ESP_LOGI(TAG, "Serving page /helloworld");
-
-        const char *response = "<html><body><h1>Hello World!</h1></body></html>";
-
-        httpd_resp_set_status(req, "200 OK");
-        httpd_resp_set_type(req, "text/html");
-        httpd_resp_send(req, response, strlen(response));
-    }
-    else
-    {
-        /* send a 404 otherwise */
-        httpd_resp_send_404(req);
-    }
-
-    return ESP_OK;
-}
 extern void my_http_app_init(void);
 static void initialise_wifi(void)
 {
-    // ESP_ERROR_CHECK(esp_netif_init());
-    // s_wifi_event_group = xEventGroupCreate();
-    // ESP_ERROR_CHECK(esp_event_loop_create_default());
-    // esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
-    // assert(sta_netif);
-
-    // wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    // ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-    // ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-    // ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &event_handler, NULL));
-    // ESP_ERROR_CHECK(esp_event_handler_register(SC_EVENT, ESP_EVENT_ANY_ID, &event_handler, NULL));
-
-    // ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-    // ESP_ERROR_CHECK(esp_wifi_start());
-
     /* start the wifi manager */
     wifi_manager_start();
 

@@ -1,4 +1,4 @@
-idf_component_register(SRCS "http_request_handle.c"
+idf_component_register(SRCS "TimeManger.c" "http_request_handle.c"
                             "app_main.c"
                             "WateringManager.cpp"
                             "WateringManagerWrapper.cpp"
